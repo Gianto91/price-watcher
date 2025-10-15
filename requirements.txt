@@ -2,4 +2,5 @@ playwright
 requests
 python-dateutil
 urllib3==1.26.20
+pytest
 

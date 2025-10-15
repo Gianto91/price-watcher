@@ -4,7 +4,8 @@ from .nike_search import search_prices_and_screenshot
 from .notify import send_message, send_photo
 
 QUERY = os.getenv("QUERY", "Nike Dunk Low Retro")
-THRESHOLD = float(os.getenv("THRESHOLD", "549"))
+# Default threshold: 549.90 soles
+THRESHOLD = float(os.getenv("THRESHOLD", "549.90"))
 BOT = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT = os.getenv("TELEGRAM_CHAT_ID")
 SEND_SHOT_ALWAYS = os.getenv("SEND_SCREENSHOT_ALWAYS","false").lower() == "true"
@@ -26,7 +27,19 @@ def main():
             except: pass
         return
 
-    best = items[0]
+    # Intentar localizar productos que contengan el texto exacto buscado
+    target_lines = ["nike dunk low retro", "zapatillas para hombre"]
+    matched = []
+    for it in items:
+        text = (it.get("text") or "").lower()
+        if all(t in text for t in target_lines):
+            matched.append(it)
+
+    if matched:
+        matched.sort(key=lambda x: x["price"])
+        best = matched[0]
+    else:
+        best = items[0]
     resumen = "\n".join([f"- S/ {i['price']:.2f} — {i['name']}" for i in items[:5]])
 
     base = (f"🛒 Monitoreo Nike\n"
