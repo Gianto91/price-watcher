@@ -12,17 +12,18 @@ jobs:
     env:
       QUERY: "Nike Dunk Low Retro"
       THRESHOLD: 549
-      # TELEGRAM_TOKEN and CHAT must be set in repository Secrets
+      # TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID deben estar en Secrets del repo
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       SEND_SCREENSHOT_ALWAYS: 'true'
-      # Ensure Python can import local `src` package during tests
+      # Asegura que Python pueda importar el paquete local src/
       PYTHONPATH: ${{ github.workspace }}
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -34,34 +35,60 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install dependencies
+      - name: Install deps + Playwright
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          python -m playwright install --with-deps
 
-      - name: Run tests
-        # Run unit tests (pytest). If tests fail, keep the workflow failing so CI alerts you.
+      # ---- PRECHECK: valida que hay secrets y que Telegram responde ----
+      - name: Sanity check env
         run: |
-          python -m pip install --upgrade pip
+          test -n "$TELEGRAM_BOT_TOKEN" || (echo "❌ Falta TELEGRAM_BOT_TOKEN" && exit 1)
+          test -n "$TELEGRAM_CHAT_ID"   || (echo "❌ Falta TELEGRAM_CHAT_ID" && exit 1)
+          echo -n "✅ Token length: "; echo -n "$TELEGRAM_BOT_TOKEN" | wc -c
+          echo "✅ Chat ID: $TELEGRAM_CHAT_ID"
+
+      - name: Telegram getMe
+        run: |
+          set -e
+          RESP="$(curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe")"
+          echo "getMe: $RESP"
+          echo "$RESP" | grep -q '"ok":true' || (echo "❌ Token inválido para Telegram" && exit 1)
+
+      - name: Telegram send test message
+        run: |
+          set -e
+          RESP="$(curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+                 -d chat_id="$TELEGRAM_CHAT_ID" -d text="🔎 Preflight: runner listo")"
+          echo "sendMessage: $RESP"
+          echo "$RESP" | grep -q '"ok":true' || (echo "❌ No se pudo enviar test a Telegram" && exit 1)
+
+      # ---- TESTS (opcional) ----
+      - name: Run tests
+        run: |
           pip install pytest
           pytest -q
 
-      - name: Install Playwright browsers
-        run: |
-          python -m playwright install --with-deps
-
+      # ---- EJECUCIÓN real ----
       - name: Run price watcher
-        # run the bot once; screenshot will be saved to a temp file and uploaded
         run: |
-          python -u -m src.main || true
+          set -e
+          python -u -m src.main
+
+      # ---- Artefactos: capturas para debug ----
       - name: Collect screenshots
+        if: always()
         run: |
           mkdir -p artifacts
-          # Copy up to 10 most recent pngs from /tmp to artifacts (if any)
+          # Copia PNGs desde /tmp y desde el repo si existieran
           ls -t /tmp/*.png 2>/dev/null | head -n 10 | xargs -I{} cp {} artifacts/ || true
+          ls -t **/*.png 2>/dev/null | head -n 10 | xargs -I{} cp {} artifacts/ || true
 
       - name: Upload screenshots
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: screenshots
           path: artifacts/*.png
+          if-no-files-found: ignore
