@@ -1,5 +1,6 @@
 from typing import List, Dict, Tuple
 import tempfile, time
+import re
 from urllib.parse import quote_plus
 from playwright.sync_api import sync_playwright
 from .utils import parse_price_text
@@ -144,21 +145,31 @@ def search_prices_and_screenshot(query: str, full_page=True) -> Tuple[List[Dict]
         ]
         sel = ','.join(product_selectors)
         # Evaluate on likely product tiles; extract title, price text, href and full text
-        nodes = page.eval_on_selector_all(
-            sel,
-            '''els => els.map(e => {
-                const text = (e.innerText || '').trim();
-                const linkEl = e.querySelector('a[href]');
-                const href = linkEl ? linkEl.href : (location.href || null);
-                // Try to get a title from common headings
-                const titleEl = e.querySelector('h3,h2,a[title],a');
-                const title = titleEl ? (titleEl.innerText||'').trim() : (text.split('\n')[0]||'').trim();
-                // Try to find a price-like substring
-                const m = text.match(/S\/\s*[\d\.,]+/i);
-                const price = m ? m[0] : null;
-                return {title, price, href, text};
-            })''',
-        )
+        # Try the full JS extraction; if the browser JS engine raises a SyntaxError
+        # (some environments choke on complex multiline strings), fall back to a
+        # compact one-line JS expression that is less likely to fail.
+        # Extract nodes safely on the Python side to avoid JS eval parser issues
+        nodes = []
+        elements = page.query_selector_all(sel)
+        for el in elements:
+            try:
+                text = (el.inner_text() or '').strip()
+            except Exception:
+                text = ''
+            try:
+                link_el = el.query_selector('a[href]')
+                href = link_el.get_attribute('href') if link_el else page.url
+            except Exception:
+                href = page.url
+            try:
+                title_el = el.query_selector('h3,h2,a[title],a')
+                title = (title_el.inner_text() or '').strip() if title_el else (text.split('\n')[0] if text else '').strip()
+            except Exception:
+                title = (text.split('\n')[0] if text else '').strip()
+            # price-like substring
+            m = re.search(r"S/\s*[\d\.,]+", text)
+            price = m.group(0) if m else None
+            nodes.append({'title': title, 'price': price, 'href': href, 'text': text})
         cards = []
         want = []
         if 'dunk' in q_lower:
@@ -167,7 +178,6 @@ def search_prices_and_screenshot(query: str, full_page=True) -> Tuple[List[Dict]
             want.append('low')
         if 'retro' in q_lower:
             want.append('retro')
-        import re
         for n in nodes:
             t = (n.get('text') or '').strip()
             tlow = t.lower()
