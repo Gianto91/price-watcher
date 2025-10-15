@@ -15,3 +15,9 @@ Crea estos *secrets* en el repo:
 - `SEND_SCREENSHOT_ALWAYS` = "true" o "false"
 
 El workflow corre cada 8 h y puedes dispararlo manualmente.
+
+
+# No incluyas tokens reales en ficheros versionados. Usa secrets en GitHub o un fichero `.env` local (no tracked).
+# Ejemplo local (poner en .env y no commitear):
+# export TELEGRAM_BOT_TOKEN="<tu-telegram-bot-token>"
+# export TELEGRAM_CHAT_ID="<tu-chat-id>"
