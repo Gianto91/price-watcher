@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+pip-wheel-metadata/
+dist/
+
+# IDEs / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Playwright / artifacts / temp
+artifacts/
+logs/
+tmp*/
+/tmp/*.png
+
+# Others
+*.log

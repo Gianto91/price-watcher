@@ -1,0 +1,58 @@
+name: Price Watch
+
+on:
+  schedule:
+    # every 8 hours => 3 times per day
+    - cron: '0 */8 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run-watch:
+    runs-on: ubuntu-latest
+    env:
+      QUERY: "Nike Dunk Low Retro"
+      THRESHOLD: 549
+      # TELEGRAM_TOKEN and CHAT must be set in repository Secrets
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SEND_SCREENSHOT_ALWAYS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: |
+          python -m playwright install --with-deps
+
+      - name: Run price watcher
+        # run the bot once; screenshot will be saved to a temp file and uploaded
+        run: |
+          python -u -m src.main || true
+      - name: Collect screenshots
+        run: |
+          mkdir -p artifacts
+          # Copy up to 10 most recent pngs from /tmp to artifacts (if any)
+          ls -t /tmp/*.png 2>/dev/null | head -n 10 | xargs -I{} cp {} artifacts/ || true
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: artifacts/*.png
